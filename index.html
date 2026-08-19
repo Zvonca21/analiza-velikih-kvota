@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Analiza velikih kvota</title>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<style>
+*{
+    box-sizing:border-box;
+}
+
+body{
+    margin:0;
+    padding:18px;
+    font-family:Arial,sans-serif;
+    background:#f2f4f7;
+    color:#222;
+}
+
+.container{
+    max-width:900px;
+    margin:auto;
+}
+
+h1{
+    text-align:center;
+    margin-bottom:8px;
+}
+
+.opis{
+    text-align:center;
+    color:#666;
+    margin-bottom:20px;
+}
+
+.box{
+    background:#fff;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.08);
+    margin-bottom:20px;
+}
+
+.info{
+    background:#eaf4ff;
+    border-left:5px solid #1677ff;
+    padding:12px;
+    border-radius:8px;
+    margin-bottom:15px;
+}
+
+input[type="file"]{
+    width:100%;
+    padding:14px;
+    border:2px dashed #aaa;
+    border-radius:8px;
+    background:#fafafa;
+}
+
+button{
+    width:100%;
+    margin-top:15px;
+    padding:15px;
+    border:none;
+    border-radius:8px;
+    background:#1677ff;
+    color:#fff;
+    font-size:17px;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+button:disabled{
+    background:#999;
+}
+
+#status{
+    text-align:center;
+    font-weight:bold;
+    margin-top:15px;
+}
+
+.progress{
+    width:100%;
+    height:20px;
+    background:#ddd;
+    border-radius:10px;
+    overflow:hidden;
+    margin-top:10px;
+}
+
+#progressBar{
+    width:0%;
+    height:100%;
+    background:#1677ff;
+    transition:.2s;
+}
+
+.tipNaslov{
+    margin-top:25px;
+    border-bottom:2px solid #ddd;
+    padding-bottom:5px;
+}
+
+.utakmica{
+    background:#fff;
+    padding:16px;
+    margin-bottom:14px;
+    border-radius:10px;
+    border-left:5px solid #1677ff;
+    box-shadow:0 2px 6px rgba(0,0,0,.06);
+}
+
+.liga{
+    color:#666;
+    font-size:13px;
+    margin-bottom:5px;
+}
+
+.par{
+    font-size:18px;
+    font-weight:bold;
+    margin-bottom:8px;
+}
+
+.podaci{
+    line-height:1.7;
+}
+
+.tip{
+    font-size:18px;
+    font-weight:bold;
+    color:#d60000;
+}
+
+.nema{
+    background:#fff3cd;
+    padding:15px;
+    border-radius:8px;
+    text-align:center;
+}
+
+@media(max-width:600px){
+    body{
+        padding:10px;
+    }
+
+    h1{
+        font-size:24px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>⚽ Analiza velikih kvota</h1>
+
+<div class="opis">
+Analiza utakmica sa slika
+</div>
+
+<div class="info">
+<strong>Pravila:</strong><br><br>
+
+Kvota na domaćina:
+<strong>1.60 – 2.10</strong><br>
+
+Dozvoljeni tipovi:
+<strong>2:0, 2:1, 3:0, 3:1, 4:0, 4:1</strong>
+</div>
+
+<div class="box">
+
+<label>
+<strong>Odaberi jednu ili više slika:</strong>
+</label>
+
+<input
+type="file"
+id="images"
+accept="image/*"
+multiple>
+
+<button
+id="analyzeButton"
+onclick="analiziraj()">
+
+ANALIZIRAJ SLIKE
+
+</button>
+
+<div id="status"></div>
+
+<div class="progress">
+<div id="progressBar"></div>
+</div>
+
+</div>
+
+<div id="rezultati"></div>
+
+</div>
+
+<script>
+
+/* =========================
+   POSTAVKE
+========================= */
+
+const MIN_KVOTA = 1.60;
+const MAX_KVOTA = 2.10;
+
+const DOZVOLJENI_TIPOVI = [
+    "2:0",
+    "2:1",
+    "3:0",
+    "3:1",
+    "4:0",
+    "4:1"
+];
+
+const REDOSLIJED_TIPOVA = {
+    "2:0":1,
+    "2:1":2,
+    "3:0":3,
+    "3:1":4,
+    "4:0":5,
+    "4:1":6
+};
+
+
+/* =========================
+   ANALIZA
+========================= */
+
+async function analiziraj(){
+
+    const input =
+        document.getElementById("images");
+
+    const status =
+        document.getElementById("status");
+
+    const rezultatiDiv =
+        document.getElementById("rezultati");
+
+    const button =
+        document.getElementById("analyzeButton");
+
+    const progressBar =
+        document.getElementById("progressBar");
+
+
+    if(!input.files.length){
+
+        alert("Odaberi barem jednu sliku.");
+
+        return;
+    }
+
+
+    button.disabled = true;
+
+    rezultatiDiv.innerHTML = "";
+
+    progressBar.style.width = "0%";
+
+    let sviRezultati = [];
+
+    const brojSlika =
+        input.files.length;
+
+
+    for(
+        let i = 0;
+        i < brojSlika;
+        i++
+    ){
+
+        const file =
+            input.files[i];
+
+        status.innerHTML =
+            "Analiziram sliku " +
+            (i + 1) +
+            " od " +
+            brojSlika +
+            "...";
+
+
+        try{
+
+            const rezultat =
+                await Tesseract.recognize(
+
+                    file,
+
+                    "eng",
+
+                    {
+
+                        logger:m=>{
+
+                            if(
+                                m.status ===
+                                "recognizing text"
+                            ){
+
+                                const trenutno =
+                                    (
+                                        i +
+                                        m.progress
+                                    )
+                                    /
+                                    brojSlika
+                                    *
+                                    100;
+
+                                progressBar.style.width =
+                                    trenutno + "%";
+                            }
+                        }
+                    }
+                );
+
+
+            const tekst =
+                rezultat.data.text;
+
+            console.log(
+                "SLIKA " +
+                (i + 1),
+                tekst
+            );
+
+
+            const utakmice =
+                pronadiUtakmice(
+                    tekst
+                );
+
+
+            sviRezultati =
+                sviRezultati.concat(
+                    utakmice
+                );
+
+        }
+        catch(error){
+
+            console.error(error);
+
+            status.innerHTML =
+                "Greška kod slike " +
+                (i + 1);
+        }
+    }
+
+
+    sviRezultati =
+        ukloniDuplikate(
+            sviRezultati
+        );
+
+
+    sviRezultati.sort(
+        (a,b)=>{
+
+            const tipA =
+                REDOSLIJED_TIPOVA[a.tip]
+                || 99;
+
+            const tipB =
+                REDOSLIJED_TIPOVA[b.tip]
+                || 99;
+
+
+            if(tipA !== tipB){
+
+                return tipA - tipB;
+            }
+
+
+            return (
+                a.kvota1 -
+                b.kvota1
+            );
+        }
+    );
+
+
+    prikaziRezultate(
+        sviRezultati
+    );
+
+
+    progressBar.style.width =
+        "100%";
+
+
+    status.innerHTML =
+        "Gotovo! Pronađeno: " +
+        sviRezultati.length +
+        " utakmica.";
+
+
+    button.disabled = false;
+}
+
+
+/* =========================
+   PRONALAZAK UTAKMICA
+========================= */
+
+function pronadiUtakmice(tekst){
+
+    let rezultati = [];
+
+
+    tekst =
+        tekst
+        .replace(/\r/g,"")
+        .replace(/,/g,".")
+        .replace(/[|]/g," ");
+
+
+    const linije =
+        tekst
+        .split("\n")
+        .map(
+            red =>
+            red.trim()
+        )
+        .filter(
+            red =>
+            red.length > 0
+        );
+
+
+    for(
+        let i = 0;
+        i < linije.length;
+        i++
+    ){
+
+        let blok = "";
+
+
+        for(
+            let j = i;
+            j <
+            Math.min(
+                i + 8,
+                linije.length
+            );
+            j++
+        ){
+
+            blok +=
+                " " +
+                linije[j];
+        }
+
+
+        /* =====================
+           KVOTE
+        ===================== */
+
+        const regexKvota =
+            /\b([1-9]\d?[.,]\d{1,2})\b/g;
+
+
+        const kvote = [];
+
+        let match;
+
+
+        while(
+            (
+                match =
+                regexKvota.exec(blok)
+            )
+            !== null
+        ){
+
+            const broj =
+                parseFloat(
+                    match[1]
+                    .replace(",",".")
+                );
+
+
+            if(
+                broj >= 1.01 &&
+                broj <= 100
+            ){
+
+                kvote.push(
+                    broj
+                );
+            }
+        }
+
+
+        if(
+            kvote.length < 3
+        ){
+
+            continue;
+        }
+
+
+        const kvota1 =
+            kvote[0];
+
+        const kvotaX =
+            kvote[1];
+
+        const kvota2 =
+            kvote[2];
+
+
+        /* =====================
+           FILTER 1.60 - 2.10
+        ===================== */
+
+        if(
+            kvota1 < MIN_KVOTA ||
+            kvota1 > MAX_KVOTA
+        ){
+
+            continue;
+        }
+
+
+        /* =====================
+           TIP
+        ===================== */
+
+        let tip = null;
+
+
+        for(
+            const trazeniTip
+            of DOZVOLJENI_TIPOVI
+        ){
+
+            const rezultatRegex =
+                trazeniTip
+                .replace(
+                    ":",
+                    "\\s*[:\\-]\\s*"
+                );
+
+
+            const regex =
+                new RegExp(
+                    "(?:Tip\\s*)?" +
+                    rezultatRegex,
+                    "i"
+                );
+
+
+            if(
+                regex.test(blok)
+            ){
+
+                tip =
+                    trazeniTip;
+
+                break;
+            }
+        }
+
+
+        if(!tip){
+
+            continue;
+        }
+
+
+        /* =====================
+           KLUBOVI
+        ===================== */
+
+        const pozicijaKvota =
+            blok.search(
+                /\b[1-9]\d?[.,]\d{1,2}\b/
+            );
+
+
+        let tekstPrijeKvota =
+            "";
+
+
+        if(
+            pozicijaKvota !== -1
+        ){
+
+            tekstPrijeKvota =
+                blok
+                .substring(
+                    0,
+                    pozicijaKvota
+                )
+                .trim();
+        }
+
+
+        tekstPrijeKvota =
+            tekstPrijeKvota
+            .replace(
+                /Tip|Rezultat|Koeficijent|Kvota/gi,
+                ""
+            )
+            .replace(
+                /\s+/g,
+                " "
+            )
+            .trim();
+
+
+        let domacin = "";
+        let gost = "";
+        let liga = "";
+
+
+        const parMatch =
+            tekstPrijeKvota.match(
+                /(.+?)\s+(?:-|–|—|vs\.?|v)\s+(.+)/i
+            );
+
+
+        if(parMatch){
+
+            domacin =
+                parMatch[1]
+                .trim();
+
+            gost =
+                parMatch[2]
+                .trim();
+
+        }
+        else{
+
+            const kandidati =
+                linije
+                .slice(
+                    Math.max(
+                        0,
+                        i - 3
+                    ),
+                    i + 2
+                )
+                .filter(
+                    x =>
+                    !/\d+[.,]\d+/.test(x) &&
+                    !/Tip/i.test(x)
+                );
+
+
+            if(
+                kandidati.length >= 2
+            ){
+
+                domacin =
+                    kandidati[
+                        kandidati.length - 2
+                    ];
+
+                gost =
+                    kandidati[
+                        kandidati.length - 1
+                    ];
+            }
+        }
+
+
+        /* =====================
+           LIGA
+        ===================== */
+
+        if(i > 0){
+
+            const kandidat =
+                linije[i - 1];
+
+
+            if(
+                kandidat &&
+                !/\d+[.,]\d+/.test(
+                    kandidat
+                )
+            ){
+
+                liga =
+                    kandidat;
+            }
+        }
+
+
+        if(
+            domacin &&
+            gost
+        ){
+
+            rezultati.push({
+
+                domacin:
+                    ocistiNaziv(
+                        domacin
+                    ),
+
+                gost:
+                    ocistiNaziv(
+                        gost
+                    ),
+
+                liga:
+                    ocistiNaziv(
+                        liga
+                    ),
+
+                kvota1:
+                    kvota1,
+
+                kvotaX:
+                    kvotaX,
+
+                kvota2:
+                    kvota2,
+
+                tip:
+                    tip
+
+            });
+        }
+    }
+
+
+    return rezultati;
+}
+
+
+/* =========================
+   ČIŠĆENJE NAZIVA
+========================= */
+
+function ocistiNaziv(tekst){
+
+    if(!tekst){
+
+        return "";
+    }
+
+
+    return tekst
+        .replace(
+            /[^a-zA-ZÀ-ž0-9\s.'()&\/+-]/g,
+            " "
+        )
+        .replace(
+            /\s+/g,
+            " "
+        )
+        .trim();
+}
+
+
+/* =========================
+   DUPLIKATI
+========================= */
+
+function ukloniDuplikate(lista){
+
+    const mapa =
+        new Map();
+
+
+    lista.forEach(
+        utakmica=>{
+
+            const kljuc =
+                (
+                    utakmica.domacin +
+                    "|" +
+                    utakmica.gost +
+                    "|" +
+                    utakmica.tip
+                )
+                .toLowerCase()
+                .replace(
+                    /\s+/g,
+                    ""
+                );
+
+
+            if(
+                !mapa.has(
+                    kljuc
+                )
+            ){
+
+                mapa.set(
+                    kljuc,
+                    utakmica
+                );
+            }
+        }
+    );
+
+
+    return Array.from(
+        mapa.values()
+    );
+}
+
+
+/* =========================
+   PRIKAZ
+========================= */
+
+function prikaziRezultate(lista){
+
+    const div =
+        document.getElementById(
+            "rezultati"
+        );
+
+
+    div.innerHTML = "";
+
+
+    if(
+        lista.length === 0
+    ){
+
+        div.innerHTML = `
+
+        <div class="nema">
+
+        Nema pronađenih utakmica
+        s kvotom domaćina od
+
+        <strong>
+        1.60 do 2.10
+        </strong>
+
+        i traženim tipovima.
+
+        </div>
+
+        `;
+
+        return;
+    }
+
+
+    let zadnjiTip = "";
+
+
+    lista.forEach(
+        utakmica=>{
+
+
+            if(
+                utakmica.tip !==
+                zadnjiTip
+            ){
+
+                div.innerHTML += `
+
+                <h2 class="tipNaslov">
+
+                Tip
+                ${utakmica.tip}
+
+                </h2>
+
+                `;
+
+
+                zadnjiTip =
+                    utakmica.tip;
+            }
+
+
+            div.innerHTML += `
+
+            <div class="utakmica">
+
+                <div class="liga">
+
+                ${
+                    utakmica.liga
+                    ?
+                    "(" +
+                    utakmica.liga +
+                    ")"
+                    :
+                    ""
+                }
+
+                </div>
+
+
+                <div class="par">
+
+                ${utakmica.domacin}
+
+                —
+
+                ${utakmica.gost}
+
+                </div>
+
+
+                <div class="podaci">
+
+                Kvota 1:
+
+                <strong>
+                ${utakmica.kvota1.toFixed(2)}
+                </strong>
+
+                <br>
+
+                Kvota X:
+
+                ${utakmica.kvotaX.toFixed(2)}
+
+                <br>
+
+                Kvota 2:
+
+                ${utakmica.kvota2.toFixed(2)}
+
+                <br><br>
+
+                Tip:
+
+                <span class="tip">
+
+                ${utakmica.tip}
+
+                </span>
+
+                </div>
+
+            </div>
+
+            `;
+
+        }
+    );
+}
+
+</script>
+
+</body>
+  </html>
