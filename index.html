@@ -6,10 +6,7 @@
 
 <title>Analiza velikih kvota</title>
 
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-
 <style>
-
 *{
     box-sizing:border-box;
 }
@@ -30,7 +27,8 @@ body{
 h1{
     text-align:center;
     font-size:36px;
-    margin:25px 0;
+    margin:28px 0;
+    line-height:1.25;
 }
 
 .info{
@@ -74,6 +72,7 @@ button{
 
 button:disabled{
     background:#999;
+    cursor:not-allowed;
 }
 
 #status{
@@ -162,12 +161,30 @@ details{
     margin-top:20px;
 }
 
+summary{
+    cursor:pointer;
+    font-weight:bold;
+}
+
 pre{
     white-space:pre-wrap;
     word-break:break-word;
     font-size:12px;
 }
 
+@media(max-width:600px){
+    h1{
+        font-size:31px;
+    }
+
+    .par{
+        font-size:20px;
+    }
+
+    .info{
+        font-size:18px;
+    }
+}
 </style>
 </head>
 
@@ -175,41 +192,36 @@ pre{
 
 <div class="container">
 
-<h1>⚽ Analiza velikih kvota</h1>
+<h1>⚽ Analiza velikih kvota ⚽</h1>
 
 <div class="info">
-
-<strong>Kvota domaćina:</strong>
-1.60 – 2.10
-
-<br>
-
-<strong>Tipovi:</strong>
-2:0, 2:1, 3:0, 3:1, 4:0, 4:1
-
+    <strong>Kvota domaćina:</strong> 1.60 – 2.10
+    <br>
+    <strong>Tipovi:</strong> 2:0, 2:1, 3:0, 3:1, 4:0, 4:1
 </div>
 
 <div class="box">
 
-<input
-    id="images"
-    type="file"
-    accept="image/*"
-    multiple
->
+    <input
+        id="images"
+        type="file"
+        accept="image/*"
+        multiple
+    >
 
-<button
-    id="analyzeButton"
-    type="button"
->
-ANALIZIRAJ SLIKE
-</button>
+    <button
+        id="analyzeButton"
+        type="button"
+        onclick="pokreniAnalizu()"
+    >
+        ANALIZIRAJ SLIKE
+    </button>
 
-<div id="status"></div>
+    <div id="status"></div>
 
-<div class="progress">
-    <div id="progressBar"></div>
-</div>
+    <div class="progress">
+        <div id="progressBar"></div>
+    </div>
 
 </div>
 
@@ -219,12 +231,11 @@ ANALIZIRAJ SLIKE
 
 </div>
 
-
 <script>
 
-/* =============================
+/* =========================================================
    POSTAVKE
-============================= */
+========================================================= */
 
 var MIN_KVOTA = 1.60;
 var MAX_KVOTA = 2.10;
@@ -248,22 +259,93 @@ var TIP_ORDER = {
 };
 
 
-/* =============================
-   GUMB
-============================= */
+/* =========================================================
+   UČITAVANJE TESSERACTA
+========================================================= */
 
-document.getElementById(
-    "analyzeButton"
-).onclick = function(){
+function ucitajTesseract(){
 
-    pokreniAnalizu();
+    return new Promise(function(resolve,reject){
 
-};
+        if(typeof Tesseract !== "undefined"){
+            resolve();
+            return;
+        }
 
 
-/* =============================
+        var script =
+            document.createElement("script");
+
+        script.src =
+            "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+
+
+        script.onload = function(){
+
+            if(typeof Tesseract !== "undefined"){
+                resolve();
+            }else{
+                ucitajRezervniTesseract(resolve,reject);
+            }
+        };
+
+
+        script.onerror = function(){
+
+            ucitajRezervniTesseract(resolve,reject);
+
+        };
+
+
+        document.head.appendChild(script);
+
+    });
+}
+
+
+function ucitajRezervniTesseract(resolve,reject){
+
+    var script =
+        document.createElement("script");
+
+    script.src =
+        "https://unpkg.com/tesseract.js@5/dist/tesseract.min.js";
+
+
+    script.onload = function(){
+
+        if(typeof Tesseract !== "undefined"){
+
+            resolve();
+
+        }else{
+
+            reject(
+                new Error(
+                    "OCR biblioteka se nije uspjela učitati."
+                )
+            );
+        }
+    };
+
+
+    script.onerror = function(){
+
+        reject(
+            new Error(
+                "OCR biblioteka se nije uspjela učitati."
+            )
+        );
+    };
+
+
+    document.head.appendChild(script);
+}
+
+
+/* =========================================================
    GLAVNA ANALIZA
-============================= */
+========================================================= */
 
 async function pokreniAnalizu(){
 
@@ -305,30 +387,28 @@ async function pokreniAnalizu(){
     progress.style.width =
         "2%";
 
+    button.disabled =
+        true;
+
     rezultatiDiv.innerHTML =
         "";
 
     debugDiv.innerHTML =
         "";
 
-    button.disabled =
-        true;
 
+    try{
 
-    /*
-       Provjera Tesseract biblioteke
-    */
+        await ucitajTesseract();
 
-    if(
-        typeof Tesseract ===
-        "undefined"
-    ){
+    }
+    catch(error){
 
         status.innerHTML =
-            "Tesseract se nije učitao.";
+            "Greška: OCR se nije učitao.";
 
         alert(
-            "OCR biblioteka se nije učitala. Osvježi stranicu i pokušaj ponovno."
+            error.message
         );
 
         button.disabled =
@@ -338,7 +418,8 @@ async function pokreniAnalizu(){
     }
 
 
-    var sveUtakmice = [];
+    var sveUtakmice =
+        [];
 
     var sviOCR =
         [];
@@ -364,13 +445,14 @@ async function pokreniAnalizu(){
                 "...";
 
 
+            var trenutniIndex =
+                i;
+
+
             var rezultat =
                 await Tesseract.recognize(
-
                     file,
-
                     "eng",
-
                     {
 
                         logger:function(m){
@@ -383,9 +465,10 @@ async function pokreniAnalizu(){
                                 var dio =
                                     m.progress || 0;
 
+
                                 var ukupno =
                                     (
-                                        i +
+                                        trenutniIndex +
                                         dio
                                     )
                                     /
@@ -393,13 +476,15 @@ async function pokreniAnalizu(){
                                     *
                                     100;
 
+
                                 progress.style.width =
                                     ukupno +
                                     "%";
 
+
                                 status.innerHTML =
                                     "Analiziram sliku " +
-                                    (i + 1) +
+                                    (trenutniIndex + 1) +
                                     " od " +
                                     input.files.length +
                                     " — " +
@@ -455,8 +540,7 @@ async function pokreniAnalizu(){
 
 
                 if(
-                    tipA !==
-                    tipB
+                    tipA !== tipB
                 ){
 
                     return (
@@ -513,9 +597,7 @@ async function pokreniAnalizu(){
 
     catch(error){
 
-        console.error(
-            error
-        );
+        console.error(error);
 
 
         status.innerHTML =
@@ -535,9 +617,9 @@ async function pokreniAnalizu(){
 }
 
 
-/* =============================
-   OBRADA OCR TEKSTA
-============================= */
+/* =========================================================
+   OCR OBRADA
+========================================================= */
 
 function pronadiUtakmice(tekst){
 
@@ -561,13 +643,13 @@ function pronadiUtakmice(tekst){
 
 
     /*
-       Vrijeme:
+        OCR često pročita:
 
-       17 30 Gornik
+        17 30 Gornik
 
-       ->
+        umjesto:
 
-       17:30 Gornik
+        17:30 Gornik
     */
 
     tekst =
@@ -578,7 +660,7 @@ function pronadiUtakmice(tekst){
 
 
     /*
-       Novi red prije vremena
+        Novi red prije svakog vremena
     */
 
     tekst =
@@ -622,7 +704,7 @@ function pronadiUtakmice(tekst){
 
 
         /*
-           Liga
+            Liga
         */
 
         if(
@@ -639,7 +721,7 @@ function pronadiUtakmice(tekst){
 
 
         /*
-           Prvo samo trenutni red
+            Prvo probaj samo jedan red.
         */
 
         var utakmica =
@@ -660,8 +742,8 @@ function pronadiUtakmice(tekst){
 
 
         /*
-           Ako OCR razbije utakmicu
-           na dva reda
+            Ako je OCR prelomio utakmicu
+            u dva retka.
         */
 
         if(
@@ -669,28 +751,43 @@ function pronadiUtakmice(tekst){
             linije.length
         ){
 
-            var spoj2 =
-                red +
-                " " +
+            var sljedeci =
                 linije[
                     i + 1
                 ];
 
 
-            utakmica =
-                parsirajRed(
-                    spoj2,
-                    trenutnaLiga
-                );
+            /*
+                Ne spajaj ako sljedeći red
+                već počinje drugom utakmicom.
+            */
+
+            if(
+                !/^[0-2]?[0-9]:[0-5][0-9]\b/
+                .test(
+                    sljedeci
+                )
+            ){
+
+                var spoj2 =
+                    red +
+                    " " +
+                    sljedeci;
 
 
-            if(utakmica){
+                utakmica =
+                    parsirajRed(
+                        spoj2,
+                        trenutnaLiga
+                    );
 
-                lista.push(
-                    utakmica
-                );
 
-                continue;
+                if(utakmica){
+
+                    lista.push(
+                        utakmica
+                    );
+                }
             }
         }
     }
@@ -700,18 +797,14 @@ function pronadiUtakmice(tekst){
 }
 
 
-/* =============================
-   PARSIRANJE JEDNOG RETKA
-============================= */
+/* =========================================================
+   PARSIRANJE JEDNE UTAKMICE
+========================================================= */
 
 function parsirajRed(
     red,
     liga
 ){
-
-    /*
-       Mora imati vrijeme
-    */
 
     var vrijemeMatch =
         red.match(
@@ -739,12 +832,11 @@ function parsirajRed(
 
 
     /*
-       Ako se u istom tekstu pojavi
-       još jedno vrijeme,
-       odreži sve iza njega.
+        Ako imamo drugo vrijeme u istom retku,
+        odreži sve iza njega.
     */
 
-    var poslijePrvog =
+    var ostatak =
         red.substring(
             vrijemeMatch.index +
             vrijemeMatch[0].length
@@ -752,7 +844,7 @@ function parsirajRed(
 
 
     var drugoVrijeme =
-        poslijePrvog.search(
+        ostatak.search(
             /\b[0-2]?[0-9]:[0-5][0-9]\b/
         );
 
@@ -772,9 +864,7 @@ function parsirajRed(
 
 
     /*
-       TIP
-
-       Uzimamo samo zadnji tip u retku.
+        TIP
     */
 
     var tipPodatak =
@@ -792,8 +882,7 @@ function parsirajRed(
 
 
     /*
-       Pronađi decimalne brojeve
-       prije tipa.
+        Koristimo samo tekst PRIJE tipa.
     */
 
     var dioPrijeTipa =
@@ -803,53 +892,21 @@ function parsirajRed(
         );
 
 
-    var brojevi = [];
+    /*
+        KVOTE S TOČKAMA
+    */
 
-    var regex =
-        /\b([0-9]{1,2}\.[0-9]{1,2})\b/g;
-
-
-    var match;
-
-
-    while(
-        (
-            match =
-            regex.exec(
-                dioPrijeTipa
-            )
-        )
-        !==
-        null
-    ){
-
-        var vrijednost =
-            parseFloat(
-                match[1]
-            );
-
-
-        if(
-            vrijednost >= 1.01 &&
-            vrijednost <= 50
-        ){
-
-            brojevi.push({
-
-                value:
-                    vrijednost,
-
-                index:
-                    match.index
-
-            });
-        }
-    }
+    var brojevi =
+        pronadiDecimalneKvote(
+            dioPrijeTipa
+        );
 
 
     /*
-       Ako OCR izgubi točke:
-       167 362 430
+        Ako OCR nije pročitao točke,
+        probaj brojeve poput:
+
+        167 362 430
     */
 
     if(
@@ -872,12 +929,8 @@ function parsirajRed(
 
 
     /*
-       ZADNJE TRI brojke prije tipa
-       moraju biti:
-
-       1
-       X
-       2
+        Zadnja tri broja prije tipa
+        moraju biti 1 / X / 2.
     */
 
     var zadnjeTri =
@@ -897,7 +950,7 @@ function parsirajRed(
 
 
     /*
-       FILTER
+        FILTER KVOTE DOMAĆINA
     */
 
     if(
@@ -912,9 +965,21 @@ function parsirajRed(
     }
 
 
+    if(
+        kvotaX < 1.01 ||
+        kvotaX > 50 ||
+        kvota2 < 1.01 ||
+        kvota2 > 50
+    ){
+
+        return null;
+    }
+
+
     /*
-       Naziv utakmice je samo
-       između vremena i prve kvote.
+        NAZIV UTAKMICE
+
+        samo između vremena i prve kvote
     */
 
     var startNaziva =
@@ -955,10 +1020,9 @@ function parsirajRed(
 
 
     /*
-       Briši zalijepljene OCR kvote
-       bez točke:
+        Makni zalijepljene OCR brojeve:
 
-       Benfica 820 570 129
+        Benfica 820 570 129
     */
 
     naziv =
@@ -969,7 +1033,7 @@ function parsirajRed(
 
 
     /*
-       Domaćin - gost
+        Pronađi separator domaćin - gost.
     */
 
     var separator =
@@ -1016,12 +1080,12 @@ function parsirajRed(
 
 
     /*
-       Dodatno čišćenje
+        Još jednom briši OCR brojeve
+        na kraju imena gosta.
     */
 
     gost =
-        gost
-        .replace(
+        gost.replace(
             /\s+\d{3,4}(?:\s+\d{3,4})+.*$/,
             ""
         )
@@ -1038,11 +1102,8 @@ function parsirajRed(
 
 
     if(
-        domacin.length >
-        60
-        ||
-        gost.length >
-        60
+        domacin.length > 60 ||
+        gost.length > 60
     ){
 
         return null;
@@ -1078,18 +1139,79 @@ function parsirajRed(
 }
 
 
-/* =============================
-   CIJELE KVOTE
-============================= */
+/* =========================================================
+   DECIMALNE KVOTE
+========================================================= */
+
+function pronadiDecimalneKvote(
+    tekst
+){
+
+    var lista =
+        [];
+
+
+    var regex =
+        /\b([0-9]{1,2}\.[0-9]{1,2})\b/g;
+
+
+    var match;
+
+
+    while(
+        (
+            match =
+            regex.exec(
+                tekst
+            )
+        )
+        !==
+        null
+    ){
+
+        var vrijednost =
+            parseFloat(
+                match[1]
+            );
+
+
+        if(
+            vrijednost >= 1.01 &&
+            vrijednost <= 50
+        ){
+
+            lista.push({
+
+                value:
+                    vrijednost,
+
+                index:
+                    match.index
+
+            });
+        }
+    }
+
+
+    return lista;
+}
+
+
+/* =========================================================
+   KVOTE BEZ TOČKE
+========================================================= */
 
 function pronadiCijeleKvote(
     tekst
 ){
 
-    var lista = [];
+    var lista =
+        [];
+
 
     var regex =
         /\b([0-9]{3,4})\b/g;
+
 
     var match;
 
@@ -1108,12 +1230,12 @@ function pronadiCijeleKvote(
         var raw =
             match[1];
 
+
         var value;
 
 
         if(
-            raw.length ===
-            3
+            raw.length === 3
         ){
 
             value =
@@ -1163,218 +1285,8 @@ function pronadiCijeleKvote(
 }
 
 
-/* =============================
+/* =========================================================
    TIP
-============================= */
+========================================================= */
 
-function pronadiTip(
-    red
-){
-
-    var regex =
-        /\b([234])\s*[:\-]\s*([01])\b/g;
-
-
-    var matches = [];
-
-    var match;
-
-
-    while(
-        (
-            match =
-            regex.exec(red)
-        )
-        !==
-        null
-    ){
-
-        var tip =
-            match[1] +
-            ":" +
-            match[2];
-
-
-        if(
-            TIPOVI.indexOf(
-                tip
-            )
-            !==
-            -1
-        ){
-
-            matches.push({
-
-                tip:
-                    tip,
-
-                index:
-                    match.index
-
-            });
-        }
-    }
-
-
-    if(
-        matches.length >
-        0
-    ){
-
-        return matches[
-            matches.length - 1
-        ];
-    }
-
-
-    /*
-       OCR bez dvotočke:
-       20 21 30 31 40 41
-    */
-
-    var bez =
-        red.match(
-            /\b(20|21|30|31|40|41)\b\s*(?:More)?\s*$/
-        );
-
-
-    if(bez){
-
-        return {
-
-            tip:
-                bez[1]
-                .charAt(0)
-                +
-                ":"
-                +
-                bez[1]
-                .charAt(1),
-
-            index:
-                bez.index
-        };
-    }
-
-
-    return null;
-}
-
-
-/* =============================
-   LIGA
-============================= */
-
-function jeLiga(red){
-
-    if(
-        /^\d{1,2}:\d{2}/
-        .test(red)
-    ){
-
-        return false;
-    }
-
-
-    return (
-
-        /League/i.test(red) ||
-
-        /Liga/i.test(red) ||
-
-        /Division/i.test(red) ||
-
-        /Cup/i.test(red) ||
-
-        /Premiership/i.test(red) ||
-
-        /Championship/i.test(red) ||
-
-        /Allsvenskan/i.test(red) ||
-
-        /Superettan/i.test(red) ||
-
-        /Ekstraklasa/i.test(red) ||
-
-        /Eredivisie/i.test(red) ||
-
-        /U19/i.test(red)
-
-    );
-}
-
-
-function ocistiLigu(red){
-
-    return String(red)
-
-    .replace(
-        /\b1\s+X\s+2\s+Tip\b/gi,
-        ""
-    )
-
-    .replace(
-        /\s+/g,
-        " "
-    )
-
-    .trim();
-}
-
-
-/* =============================
-   NAZIV
-============================= */
-
-function ocistiNaziv(
-    text
-){
-
-    return String(text)
-
-    .replace(
-        /[^A-Za-zÀ-ž0-9 .&'()\/+\-]/g,
-        " "
-    )
-
-    .replace(
-        /\s+/g,
-        " "
-    )
-
-    .trim();
-}
-
-
-/* =============================
-   DUPLIKATI
-============================= */
-
-function ukloniDuplikate(
-    lista
-){
-
-    var mapa = {};
-
-
-    return lista.filter(
-        function(u){
-
-            var key =
-                (
-                    u.domacin +
-                    "|" +
-                    u.gost +
-                    "|" +
-                    u.tip
-                )
-
-                .toLowerCase()
-
-                .replace(
-                    /\s+/g,
-                    ""
-                );
-
-
-            if(
+function pron
